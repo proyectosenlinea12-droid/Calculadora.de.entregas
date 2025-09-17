@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Entregas – Móvil</title>
+
+<!-- Mapbox -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
+
+<style>
+  :root{
+    --bg:#0b1220;--panel:#0f172a;--muted:#94a3b8;--text:#e5e7eb;
+    --blue:#2563eb;--green:#16a34a;--yellow:#f59e0b;--red:#ef4444
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{margin:0;font-family:system-ui,Segoe UI,Arial;background:var(--bg);color:var(--text)}
+
+  /* Layout móvil */
+  #map{height:46vh; min-height:260px}
+  .panel{
+    background:var(--panel);
+    border-top:1px solid rgba(148,163,184,.2);
+    border-radius:16px 16px 0 0;
+    margin-top:-12px;
+    position:relative;
+    z-index:2;
+    padding:14px;
+  }
+
+  h2{margin:0 0 6px 0;font-size:18px}
+  h3{margin:14px 0 6px 0;font-size:15px;color:#cbd5e1}
+  label{font-size:12px;color:var(--muted);display:block;margin:6px 0 4px}
+  input,select,button{width:100%;padding:12px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.25);background:#0b1220;color:#fff;font-size:16px}
+  input::placeholder{color:#6b7280}
+  input[type="number"]{appearance:textfield}
+  button{font-weight:700}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .muted{color:var(--muted);font-size:12px}
+
+  .btn{border:none}
+  .btn-primary{background:var(--blue)}
+  .btn-success{background:var(--green)}
+  .btn-warn{background:var(--yellow);color:#000}
+  .btn-danger{background:var(--red)}
+  .btn-ghost{background:#0b1220;border:1px solid rgba(148,163,184,.25)}
+
+  /* Estado */
+  .status{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .badge{padding:4px 10px;border-radius:999px;font-weight:800;font-size:12px}
+  .b-green{background:var(--green);color:#fff}
+  .b-yellow{background:var(--yellow);color:#000}
+  .b-red{background:var(--red);color:#fff}
+  .results{margin-top:8px;font-size:14px}
+  .results div{margin-bottom:4px}
+
+  /* Tabla */
+  table{border-collapse:separate;border-spacing:0;font-size:12px;background:#0b1220;border:1px solid rgba(148,163,184,.25);border-radius:10px;overflow:hidden;width:100%}
+  th,td{padding:10px;border-bottom:1px solid rgba(148,163,184,.15);vertical-align:middle}
+  th{color:#cbd5e1;text-align:left;background:#0f172a;position:sticky;top:0;z-index:1}
+  td[contenteditable="true"]{outline:none}
+  td[contenteditable="true"]:focus{box-shadow:inset 0 0 0 2px rgba(37,99,235,.65);border-radius:6px}
+
+  /* Autocomplete */
+  .ac-wrap{position:relative}
+  .ac-list{position:absolute;left:0;right:0;top:100%;background:#0b1220;border:1px solid rgba(148,163,184,.25);border-radius:10px;margin-top:4px;max-height:240px;overflow:auto;z-index:50}
+  .ac-item{padding:12px;cursor:pointer;border-bottom:1px solid rgba(148,163,184,.12)}
+  .ac-item:active{background:#111c33}
+
+  /* FAB para abrir tabla */
+  .fab{
+    position:fixed; right:16px; bottom:16px; z-index:50;
+    background:var(--blue); color:#fff; border:none; border-radius:999px;
+    padding:14px 18px; font-weight:800; box-shadow:0 10px 25px rgba(0,0,0,.35)
+  }
+
+  /* Modal fullscreen móvil */
+  .pamodal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:60}
+  .pamodal.open{display:flex !important}
+  .pamodal::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+  .pamodal-card{
+    position:relative; width:100vw; height:100vh; max-width:100%;
+    background:#0b1220; border:0; border-radius:0; padding:12px 12px 80px; display:flex; flex-direction:column; gap:10px; z-index:1
+  }
+  .modal-header{display:flex;align-items:center;justify-content:space-between}
+  .modal-body{overflow:auto;border:1px solid rgba(148,163,184,.2);border-radius:12px}
+  .modal-actions{
+    position:fixed; left:0; right:0; bottom:0; padding:12px;
+    background:linear-gradient(180deg, rgba(11,18,32,0), rgba(11,18,32,.95) 28%);
+    display:flex; gap:8px
+  }
+
+  /* Mejoras táctiles */
+  @media (max-width:420px){
+    .row2{grid-template-columns:1fr}
+    input,select,button{font-size:16px}
+  }
+</style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="panel">
+    <h2>Calculadora de Entregas</h2>
+
+    <h3>Direcciones</h3>
+    <label>Origen</label>
+    <div class="row2">
+      <div class="ac-wrap">
+        <input id="originInput" placeholder="Ej: Av. México 1234, Guadalajara"/>
+        <div id="originList" class="ac-list" style="display:none"></div>
+      </div>
+      <button id="useMyLoc" class="btn btn-ghost">📍 Mi ubicación</button>
+    </div>
+
+    <label>Destino</label>
+    <div class="ac-wrap">
+      <input id="destInput" placeholder="Ej: Plaza del Sol, Zapopan"/>
+      <div id="destList" class="ac-list" style="display:none"></div>
+    </div>
+
+    <h3>Tarifas</h3>
+    <div class="row2">
+      <div><label>1–5 km</label><input id="t1" type="number" value="50"></div>
+      <div><label>5.1–7 km</label><input id="t2" type="number" value="70"></div>
+      <div><label>7.1–10 km</label><input id="t3" type="number" value="90"></div>
+      <div><label>10.1–14 km</label><input id="t4" type="number" value="110"></div>
+      <div><label>14.1–20 km</label><input id="t5" type="number" value="140"></div>
+      <div><label>20.01–25 km</label><input id="t6" type="number" value="190"></div>
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <div><label>Extra por km fuera de 25</label><input id="extraKm" type="number" value="12"></div>
+      <div><label>Límite duro (km)</label><input id="limitKm" type="number" step="0.1" value="30"></div>
+    </div>
+    <div class="muted">Verde: ≤25 km · Amarillo: 25–límite con recargo · Rojo: > límite.</div>
+
+    <button id="calcBtn" class="btn btn-primary" style="margin-top:10px">Calcular entrega</button>
+
+    <div class="status" id="statusWrap" style="display:none">
+      <span id="statusBadge" class="badge">Estado</span>
+      <span id="statusText"></span>
+    </div>
+    <div class="results" id="results"></div>
+
+    <h3>Datos del cliente</h3>
+    <div class="row2">
+      <div>
+        <label>Cliente</label>
+        <input id="cliNombre" placeholder="Nombre y apellidos" autocomplete="name"/>
+      </div>
+      <div>
+        <label>Teléfono</label>
+        <input id="cliTelefono" inputmode="numeric" placeholder="10 dígitos" pattern="[0-9]*"/>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Producto</label>
+        <input id="cliProducto" placeholder="Ej: Pastel 3 leches"/>
+      </div>
+      <div>
+        <label>Costo del producto ($)</label>
+        <input id="cliCosto" type="number" step="0.01" value="0"/>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Fecha de entrega</label>
+        <input id="cliFecha" type="date"/>
+      </div>
+      <div></div>
+    </div>
+    <label>Nota</label>
+    <input id="cliNota" placeholder="Indicaciones, pagos, referencias, etc."/>
+
+    <div class="row2" style="margin-top:10px">
+      <button class="btn btn-success" id="addBtn">Agregar a la ruta</button>
+      <button class="btn btn-warn" id="exportBtn">Exportar CSV</button>
+      <button class="btn btn-danger" id="clearBtn">Limpiar lista</button>
+    </div>
+
+    <h3 style="margin-top:14px">Rutas guardadas</h3>
+    <label>📅 Fecha</label>
+    <select id="fechaFiltro"></select>
+    <div class="muted" style="margin-top:6px">Toca el botón azul flotante para ver/editar la tabla.</div>
+  </div>
+
+  <!-- FAB abrir tabla -->
+  <button class="fab" id="openTableBtn">📋 Tabla</button>
+
+  <!-- Modal fullscreen con tabla editable -->
+  <div class="pamodal" id="pamodalTabla">
+    <div class="pamodal-card">
+      <div class="modal-header">
+        <h3>Ruta – Tabla editable</h3>
+        <button id="closeTableBtn" class="btn btn-danger" style="width:auto;padding:10px 12px">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <table id="tblPedidos">
+          <thead>
+          <tr>
+            <th>#</th>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Producto</th>
+            <th>Nota</th>
+            <th>Costo</th>
+            <th>Dirección</th>
+            <th>Distancia (km)</th>
+            <th>Costo entrega</th>
+            <th>Fecha (no exporta)</th>
+            <th>Acciones</th>
+          </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button id="saveTableBtn" class="btn btn-primary" style="flex:1">💾 Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // 🔑 Token
+  mapboxgl.accessToken = 'pk.eyJ1IjoiaXNybG4xMiIsImEiOiJjbWZuaG8xYnYwYzlvMmtvaWFqZ3ZkbG5qIn0.8WoEK8N-Xe-vFORJaODmsA';
+
+  let origin=null, destination=null, lastCalc=null;
+  const ROUTE_ID='routeLine';
+  let pedidos = JSON.parse(localStorage.getItem('pedidos_gdl')||'[]');
+  let fechaActual = todayISO();
+  const $ = id => document.getElementById(id);
+  const pesos = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
+  const debounce=(fn,ms=300)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+  const ISO=/^\d{4}-\d{2}-\d{2}$/;
+  function todayISO(){return new Date().toISOString().slice(0,10);}
+
+  // Init
+  let map;
+  window.addEventListener('load', async()=>{
+    map = new mapboxgl.Map({
+      container:'map', style:'mapbox://styles/mapbox/dark-v11',
+      center:[-103.344,20.6736], zoom:12
+    });
+    window._map = map;
+    map.addControl(new mapboxgl.NavigationControl({visualizePitch:true}));
+
+    // Geolocate
+    const geolocate = new mapboxgl.GeolocateControl({
+      positionOptions:{enableHighAccuracy:true,timeout:15000,maximumAge:0},
+      trackUserLocation:false, showUserHeading:true
+    });
+    map.addControl(geolocate);
+    $('useMyLoc').addEventListener('click', ()=>{
+      if(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1') geolocate.trigger();
+      else if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(async pos=>{
+          const {longitude:lng,latitude:lat} = pos.coords;
+          const label = await reverseGeocode(lng,lat).catch(()=> 'Mi ubicación');
+          $('originInput').value=label; origin={lng,lat,label};
+          addOrMoveMarker('origin',lng,lat,'#16a34a'); map.flyTo({center:[lng,lat],zoom:14});
+        }, err=> alert('Ubicación: '+err.message), {enableHighAccuracy:true,timeout:15000,maximumAge:0});
+      } else alert('Tu navegador no soporta geolocalización.');
+    });
+    geolocate.on('geolocate', async e=>{
+      const {longitude:lng,latitude:lat} = e.coords;
+      const label = await reverseGeocode(lng,lat).catch(()=> 'Mi ubicación');
+      $('originInput').value=label; origin={lng,lat,label};
+      addOrMoveMarker('origin',lng,lat,'#16a34a'); map.flyTo({center:[lng,lat],zoom:14});
+    });
+
+    // Autocomplete
+    attachAutocomplete($('originInput'), $('originList'), it=>{
+      origin=it; addOrMoveMarker('origin', it.lng, it.lat, '#16a34a'); map.flyTo({center:[it.lng,it.lat], zoom:13});
+    });
+    attachAutocomplete($('destInput'), $('destList'), it=>{
+      destination=it; addOrMoveMarker('dest', it.lng, it.lat, '#2563eb');
+    });
+
+    // Listeners
+    $('calcBtn').addEventListener('click', onCalculate);
+    $('addBtn').addEventListener('click', onAdd);
+    $('exportBtn').addEventListener('click', onExport);
+    $('clearBtn').addEventListener('click', ()=>{ if(confirm('¿Borrar toda la lista?')){ pedidos=[]; persist(); refreshUI(); }});
+
+    $('openTableBtn').addEventListener('click', ()=>{ if($('fechaFiltro').value) fechaActual=$('fechaFiltro').value; refreshUI(); openModal(); });
+    $('closeTableBtn').addEventListener('click', closeModal);
+    $('pamodalTabla').addEventListener('click', e=>{ if(e.target.id==='pamodalTabla') closeModal(); });
+    $('saveTableBtn').addEventListener('click', saveTableChanges);
+
+    $('cliFecha').value=todayISO();
+
+    refreshUI();
+
+    // Evita zoom con doble tap accidental
+    let lastTouch=0;
+    document.addEventListener('touchend', e=>{
+      const now=Date.now();
+      if(now-lastTouch<=350) e.preventDefault();
+      lastTouch=now;
+    }, {passive:false});
+  });
+
+  // Helpers
+  async function geocodeSuggest(q){
+    if(!q.trim()) return [];
+    const url=`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?autocomplete=true&limit=6&language=es&country=mx&access_token=${mapboxgl.accessToken}`;
+    const r=await fetch(url); const j=await r.json();
+    return (j.features||[]).map(f=>({label:f.place_name,lng:f.center[0],lat:f.center[1]}));
+  }
+  async function geocodeExact(q){
+    const url=`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?limit=1&language=es&country=mx&access_token=${mapboxgl.accessToken}`;
+    const r=await fetch(url); const j=await r.json();
+    if(!j.features||!j.features[0]) throw new Error('No se encontró: '+q);
+    const f=j.features[0]; return {label:f.place_name,lng:f.center[0],lat:f.center[1]};
+  }
+  async function reverseGeocode(lng,lat){
+    const url=`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?language=es&access_token=${mapboxgl.accessToken}`;
+    const r=await fetch(url); const j=await r.json();
+    return (j.features&&j.features[0])? j.features[0].place_name : 'Mi ubicación';
+  }
+  function attachAutocomplete(inputEl, listEl, setFn){
+    let items=[];
+    const render=arr=>{
+      items=arr;
+      if(!arr.length){ listEl.style.display='none'; return; }
+      listEl.innerHTML=arr.map((it,i)=>`<div class="ac-item" data-i="${i}">${it.label}</div>`).join('');
+      listEl.style.display='block';
+    };
+    inputEl.addEventListener('input', debounce(async ()=>{
+      const q=inputEl.value; if(q.length<3){ listEl.style.display='none'; return; }
+      try{ render(await geocodeSuggest(q)); }catch{ listEl.style.display='none'; }
+    },220));
+    listEl.addEventListener('click', e=>{
+      const el=e.target.closest('.ac-item'); if(!el) return;
+      const it=items[+el.dataset.i]; inputEl.value=it.label; listEl.style.display='none'; setFn(it);
+    });
+    document.addEventListener('click', e=>{ if(!listEl.contains(e.target)&&e.target!==inputEl) listEl.style.display='none'; });
+  }
+  function addOrMoveMarker(which,lng,lat,color){
+    const mk = new mapboxgl.Marker({color}).setLngLat([lng,lat]).addTo(map);
+    if(which==='origin'){ if(window._o) window._o.remove(); window._o=mk; } else { if(window._d) window._d.remove(); window._d=mk; }
+  }
+  async function routeAndDraw(map,a,b){
+    const url=`https://api.mapbox.com/directions/v5/mapbox/driving/${a.lng},${a.lat};${b.lng},${b.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+    const r=await fetch(url); const j=await r.json();
+    if(!j.routes||!j.routes[0]) throw new Error('No se pudo calcular la ruta');
+    const route=j.routes[0];
+    if(map.getLayer(ROUTE_ID)) map.removeLayer(ROUTE_ID);
+    if(map.getSource(ROUTE_ID)) map.removeSource(ROUTE_ID);
+    map.addSource(ROUTE_ID,{type:'geojson',data:{type:'Feature',geometry:route.geometry}});
+    map.addLayer({id:ROUTE_ID,type:'line',source:ROUTE_ID,paint:{'line-color':'#2563eb','line-width':4}});
+    map.fitBounds([[a.lng,a.lat],[b.lng,b.lat]],{padding:40});
+    return {km: route.distance/1000, durationMin: Math.round(route.duration/60)};
+  }
+
+  // Tarifas
+  function getTierPrice(km){
+    const t1=+$('t1').value, t2=+$('t2').value, t3=+$('t3').value, t4=+$('t4').value, t5=+$('t5').value, t6=+$('t6').value;
+    if(km>=1 && km<=5) return t1;
+    if(km>5 && km<=7) return t2;
+    if(km>7 && km<=10) return t3;
+    if(km>10 && km<=14) return t4;
+    if(km>14 && km<=20) return t5;
+    if(km>20 && km<=25) return t6;
+    return null;
+  }
+
+  // Calcular (panel colores)
+  async function onCalculate(){
+    try{
+      if(!$('originInput').value.trim() || !$('destInput').value.trim()){ alert('Escribe origen y destino'); return; }
+      if(!origin) origin = await geocodeExact($('originInput').value);
+      if(!destination) destination = await geocodeExact($('destInput').value);
+      addOrMoveMarker('origin', origin.lng, origin.lat, '#16a34a');
+      addOrMoveMarker('dest', destination.lng, destination.lat, '#2563eb');
+
+      const r = await routeAndDraw(map, origin, destination);
+      const km = r.km, extraPerKm = +($('extraKm').value||12), hardLimit = +($('limitKm').value||30);
+
+      let price=null, badge='b-red', text='Fuera de cobertura';
+      if(km<=25){ price=getTierPrice(km); if(price!==null){ badge='b-green'; text='En cobertura'; } }
+      else if(km>25 && km<=hardLimit){
+        const base = getTierPrice(25)??0, extra = Math.max(0, km-25);
+        price = base + Math.ceil(extra)*extraPerKm; badge='b-yellow'; text=`Con recargo (${extra.toFixed(2)} km extra)`;
+      } // else rojo
+
+      $('statusWrap').style.display='flex';
+      $('statusBadge').className='badge '+badge;
+      $('statusBadge').textContent= badge==='b-green'?'COBERTURA':(badge==='b-yellow'?'RECARGO':'SIN COBERTURA');
+      $('statusText').textContent=text;
+      $('results').innerHTML = `
+        <div><b>Origen:</b> ${origin.label}</div>
+        <div><b>Destino:</b> ${destination.label}</div>
+        <div><b>Distancia:</b> ${km.toFixed(2)} km</div>
+        <div><b>Costo de entrega:</b> ${price==null?'No disponible':pesos(price)}</div>
+      `;
+      lastCalc = price!=null ? {km,price,address:destination.label,destLng:destination.lng,destLat:destination.lat} : null;
+    }catch(e){ alert(e.message||String(e)); }
+  }
+
+  // Agregar
+  function onAdd(){
+    if(!lastCalc){ alert('Primero calcula la entrega.'); return; }
+    const nombre=$('cliNombre').value.trim();
+    const telefono=$('cliTelefono').value.trim();
+    const producto=$('cliProducto').value.trim();
+    const costoProducto=+$('cliCosto').value||0;
+    const nota=$('cliNota').value.trim();
+    const fechaSel = $('cliFecha').value && ISO.test($('cliFecha').value) ? $('cliFecha').value : todayISO();
+    if(!nombre || !producto || !telefono){ alert('Completa nombre, teléfono y producto.'); return; }
+    pedidos.push({
+      fecha:fechaSel, nombre, telefono, producto, nota,
+      costoProducto, direccion:lastCalc.address, km:lastCalc.km,
+      costoEntrega:lastCalc.price, destLng:lastCalc.destLng, destLat:lastCalc.destLat
+    });
+    persist(); fechaActual=fechaSel; refreshUI(); openModal();
+  }
+
+  // Tabla
+  function renderTabla(fecha){
+    const tb=document.querySelector('#tblPedidos tbody'); tb.innerHTML='';
+    const rows=pedidos.filter(p=>p.fecha===fecha);
+    if(!rows.length){ tb.innerHTML=`<tr><td colspan="11" class="muted">Sin entregas para ${fecha}.</td></tr>`; return; }
+    rows.forEach((p,idx)=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>${idx+1}</td>
+        <td contenteditable="true" data-field="nombre">${p.nombre}</td>
+        <td contenteditable="true" data-field="telefono">${p.telefono}</td>
+        <td contenteditable="true" data-field="producto">${p.producto}</td>
+        <td contenteditable="true" data-field="nota">${p.nota||''}</td>
+        <td contenteditable="true" data-field="costoProducto">${p.costoProducto}</td>
+        <td contenteditable="true" data-field="direccion">${p.direccion}</td>
+        <td>${p.km.toFixed(2)}</td>
+        <td>${pesos(p.costoEntrega)}</td>
+        <td contenteditable="true" data-field="fecha">${p.fecha}</td>
+        <td><button class="btn btn-danger" data-action="del" style="padding:6px 10px">Eliminar</button></td>
+      `;
+      tr.querySelectorAll('[contenteditable="true"]').forEach(cell=>{
+        cell.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); cell.blur(); }});
+        cell.addEventListener('blur', ()=>{
+          const field = cell.dataset.field;
+          let val = cell.textContent.trim();
+          if(field==='costoProducto') val=+val||0;
+          if(field==='fecha' && !ISO.test(val)){ alert('Usa AAAA-MM-DD'); cell.textContent=p.fecha; return; }
+          updateRow(idx,field,val, field==='fecha');
+        });
+      });
+      tr.querySelector('[data-action="del"]').addEventListener('click', ()=>{
+        const real=indexInPedidos(fecha, idx); pedidos.splice(real,1); persist(); refreshUI();
+      });
+      tb.appendChild(tr);
+    });
+  }
+  function indexInPedidos(fecha, visibleIdx){
+    let c=-1; for(let i=0;i<pedidos.length;i++){ if(pedidos[i].fecha===fecha){ c++; if(c===visibleIdx) return i; } } return -1;
+  }
+  function updateRow(visibleIdx, field, value, move=false){
+    const real=indexInPedidos(fechaActual,visibleIdx); if(real<0) return;
+    pedidos[real][field]=value; persist();
+    if(move && field==='fecha'){ fechaActual=value; refreshUI(); } else renderKPIs(fechaActual);
+  }
+
+  // Fechas & KPIs
+  function uniqueDates(){ return [...new Set(pedidos.map(p=>p.fecha))].sort(); }
+  function renderSelectorFechas(){
+    const sel=$('fechaFiltro'), dates=uniqueDates();
+    if(!dates.length){ sel.innerHTML=`<option value="${todayISO()}">${todayISO()}</option>`; }
+    else{
+      if(!dates.includes(fechaActual)) fechaActual=dates[dates.length-1];
+      sel.innerHTML=dates.map(d=>`<option ${d===fechaActual?'selected':''} value="${d}">${d}</option>`).join('');
+    }
+  }
+  function renderKPIs(fecha){
+    const rows=pedidos.filter(p=>p.fecha===fecha);
+    const n=rows.length, envio=rows.reduce((a,b)=>a+(b.costoEntrega||0),0), venta=rows.reduce((a,b)=>a+(b.costoProducto||0),0);
+    // En móvil no muestro tarjetas; puedes ver totales en CSV o agrego un footer si quieres
+  }
+  function persist(){ localStorage.setItem('pedidos_gdl', JSON.stringify(pedidos)); }
+  function refreshUI(){ renderSelectorFechas(); renderKPIs(fechaActual); renderTabla(fechaActual); }
+
+  // Modal
+  function openModal(){ $('pamodalTabla').classList.add('open'); }
+  function closeModal(){ $('pamodalTabla').classList.remove('open'); }
+
+  // Export
+  function onExport(){
+    const rows=pedidos.filter(p=>p.fecha===fechaActual);
+    if(!rows.length){ alert('No hay pedidos para esa fecha.'); return; }
+    const esc=v=>`"${String(v).replaceAll('"','""')}"`;
+    const header=['Cliente','Teléfono','Producto','Nota','Costo','Dirección','Distancia (km)','Costo entrega'];
+    const lines=[header.map(esc).join(',')];
+    for(const r of rows){
+      lines.push([r.nombre,r.telefono,r.producto,(r.nota||''),r.costoProducto,r.direccion,r.km.toFixed(2),r.costoEntrega].map(esc).join(','));
+    }
+    const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a');
+    a.href=url; a.download=`ruta_${fechaActual}.csv`; a.click(); URL.revokeObjectURL(url);
+  }
+</script>
+</body>
+</html>
