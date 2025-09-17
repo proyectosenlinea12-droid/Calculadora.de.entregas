@@ -28,6 +28,7 @@
     position:relative;
     z-index:2;
     padding:14px;
+    padding-bottom:120px; /* espacio para KPIs */
   }
 
   h2{margin:0 0 6px 0;font-size:18px}
@@ -56,6 +57,11 @@
   .results{margin-top:8px;font-size:14px}
   .results div{margin-bottom:4px}
 
+  /* Chips fechas */
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .chip{padding:6px 10px;border-radius:999px;background:#0b1220;border:1px solid rgba(148,163,184,.25);font-size:12px}
+  .chip strong{color:#fff}
+
   /* Tabla */
   table{border-collapse:separate;border-spacing:0;font-size:12px;background:#0b1220;border:1px solid rgba(148,163,184,.25);border-radius:10px;overflow:hidden;width:100%}
   th,td{padding:10px;border-bottom:1px solid rgba(148,163,184,.15);vertical-align:middle}
@@ -71,7 +77,7 @@
 
   /* FAB para abrir tabla */
   .fab{
-    position:fixed; right:16px; bottom:16px; z-index:50;
+    position:fixed; right:16px; bottom:80px; z-index:50;
     background:var(--blue); color:#fff; border:none; border-radius:999px;
     padding:14px 18px; font-weight:800; box-shadow:0 10px 25px rgba(0,0,0,.35)
   }
@@ -92,7 +98,35 @@
     display:flex; gap:8px
   }
 
-  /* Mejoras táctiles */
+  /* === KPIs fijos al fondo === */
+  .kpi-bar{
+    position:fixed; left:0; right:0; bottom:0;
+    z-index:40;
+    background:linear-gradient(180deg, rgba(11,18,32,0), rgba(11,18,32,.98) 18%);
+    backdrop-filter: blur(2px);
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    border-top:1px solid rgba(148,163,184,.2);
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; align-items:stretch;
+  }
+  .kpi{background:#0b1220;border:1px solid rgba(148,163,184,.25);border-radius:12px;padding:8px;text-align:center}
+  .kpi span{display:block;color:#94a3b8;font-size:12px}
+  .kpi b{display:block;font-size:16px;margin-top:2px}
+
+  /* que el modal no tape el footer cuando está abierto */
+  .pamodal.open + .kpi-bar{display:none}
+
+  /* Toast */
+  .toast{
+    position:fixed; left:50%; bottom:calc(100px + env(safe-area-inset-bottom));
+    transform:translateX(-50%) translateY(20px);
+    background:#111c33; color:#e5e7eb; border:1px solid rgba(148,163,184,.25);
+    padding:10px 14px; border-radius:10px; z-index:70;
+    box-shadow:0 10px 25px rgba(0,0,0,.35);
+    opacity:0; pointer-events:none; transition:all .25s ease;
+    font-size:14px;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  
   @media (max-width:420px){
     .row2{grid-template-columns:1fr}
     input,select,button{font-size:16px}
@@ -184,7 +218,8 @@
     <h3 style="margin-top:14px">Rutas guardadas</h3>
     <label>📅 Fecha</label>
     <select id="fechaFiltro"></select>
-    <div class="muted" style="margin-top:6px">Toca el botón azul flotante para ver/editar la tabla.</div>
+    <div id="chipsFechas" class="chips"></div>
+    <div class="muted">Toca el botón azul flotante para ver/editar la tabla.</div>
   </div>
 
   <!-- FAB abrir tabla -->
@@ -223,6 +258,16 @@
     </div>
   </div>
 
+  <!-- KPIs al fondo -->
+  <div class="kpi-bar" id="kpiBar">
+    <div class="kpi"><span>Entregas</span><b id="kpiCount">0</b></div>
+    <div class="kpi"><span>Total envío</span><b id="kpiEnvio">$0</b></div>
+    <div class="kpi"><span>Total venta</span><b id="kpiVenta">$0</b></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">✅ Cambios guardados</div>
+
 <script>
   // 🔑 Token
   mapboxgl.accessToken = 'pk.eyJ1IjoiaXNybG4xMiIsImEiOiJjbWZuaG8xYnYwYzlvMmtvaWFqZ3ZkbG5qIn0.8WoEK8N-Xe-vFORJaODmsA';
@@ -236,6 +281,7 @@
   const debounce=(fn,ms=300)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
   const ISO=/^\d{4}-\d{2}-\d{2}$/;
   function todayISO(){return new Date().toISOString().slice(0,10);}
+  function showToast(msg='✅ Cambios guardados'){ const el=$('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1400); }
 
   // Init
   let map;
@@ -464,6 +510,27 @@
     if(move && field==='fecha'){ fechaActual=value; refreshUI(); } else renderKPIs(fechaActual);
   }
 
+  // Guardar cambios (relee celdas por si algo quedó sin blur)
+  function saveTableChanges(){
+    const fecha = fechaActual;
+    const rows = document.querySelectorAll('#tblPedidos tbody tr');
+    const indices = pedidos.map((p,i)=> p.fecha===fecha ? i : -1).filter(i=>i>=0);
+    rows.forEach((tr, visIdx)=>{
+      const real = indices[visIdx]; if(real==null) return;
+      const tds = tr.children;
+      pedidos[real].nombre = tds[1].textContent.trim();
+      pedidos[real].telefono = tds[2].textContent.trim();
+      pedidos[real].producto = tds[3].textContent.trim();
+      pedidos[real].nota = tds[4].textContent.trim();
+      pedidos[real].costoProducto = +tds[5].textContent.trim() || 0;
+      pedidos[real].direccion = tds[6].textContent.trim();
+      const f = tds[9].textContent.trim();
+      if(ISO.test(f)) pedidos[real].fecha = f;
+    });
+    persist(); refreshUI();
+    showToast('✅ Cambios guardados');
+  }
+
   // Fechas & KPIs
   function uniqueDates(){ return [...new Set(pedidos.map(p=>p.fecha))].sort(); }
   function renderSelectorFechas(){
@@ -474,13 +541,26 @@
       sel.innerHTML=dates.map(d=>`<option ${d===fechaActual?'selected':''} value="${d}">${d}</option>`).join('');
     }
   }
+  function renderChipsFechas(){
+    const wrap=$('chipsFechas'); wrap.innerHTML='';
+    uniqueDates().forEach(d=>{
+      const count = pedidos.filter(p=>p.fecha===d).length;
+      const chip = document.createElement('div');
+      chip.className='chip';
+      chip.innerHTML = `<strong>${d}</strong> · ${count} entrega${count!==1?'s':''}`;
+      chip.onclick = ()=>{ fechaActual=d; $('fechaFiltro').value=d; refreshUI(); openModal(); };
+      wrap.appendChild(chip);
+    });
+  }
   function renderKPIs(fecha){
     const rows=pedidos.filter(p=>p.fecha===fecha);
     const n=rows.length, envio=rows.reduce((a,b)=>a+(b.costoEntrega||0),0), venta=rows.reduce((a,b)=>a+(b.costoProducto||0),0);
-    // En móvil no muestro tarjetas; puedes ver totales en CSV o agrego un footer si quieres
+    $('kpiCount').textContent = n;
+    $('kpiEnvio').textContent = pesos(envio);
+    $('kpiVenta').textContent = pesos(venta);
   }
   function persist(){ localStorage.setItem('pedidos_gdl', JSON.stringify(pedidos)); }
-  function refreshUI(){ renderSelectorFechas(); renderKPIs(fechaActual); renderTabla(fechaActual); }
+  function refreshUI(){ renderSelectorFechas(); renderChipsFechas(); renderKPIs(fechaActual); renderTabla(fechaActual); }
 
   // Modal
   function openModal(){ $('pamodalTabla').classList.add('open'); }
